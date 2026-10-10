@@ -9,7 +9,7 @@ from middlewares import (
     register_request_logger_middleware,
     register_session_manager_middleware,
 )
-from resources import HealthCheckResource, SampleEntityResource
+from resources import AccountResource, CompanyResource, FeeResource, HealthCheckResource, OperationResource
 from utils.logger import setup_logging
 
 
@@ -123,7 +123,10 @@ def create_app() -> FastAPI:
     # se a coisa foi criada, agendada ou concluída. Esta lista diz QUEM
     # atende cada endereço, e mais nada.
     health_check_resource = HealthCheckResource()
-    sample_entity_resource = SampleEntityResource()
+    company_resource = CompanyResource()
+    account_resource = AccountResource()
+    operation_resource = OperationResource()
+    fee_resource = FeeResource()
 
     application.add_api_route("/", health_check_resource.on_get_home, methods=["GET"])
     application.add_api_route(
@@ -132,31 +135,33 @@ def create_app() -> FastAPI:
         methods=["GET"]
     )
 
+    application.add_api_route("/companies", company_resource.on_post, methods=["POST"])
     application.add_api_route(
-        "/sample_entity",
-        sample_entity_resource.on_post,
-        methods=["POST"],
-    )
-    application.add_api_route(
-        "/sample_entity/{sample_entity_key}",
-        sample_entity_resource.on_get_by_key,
+        "/companies/{company_key}",
+        company_resource.on_get_by_key,
         methods=["GET"],
     )
+
     application.add_api_route(
-        "/sample_entity/{sample_entity_key}",
-        sample_entity_resource.on_put_by_key,
-        methods=["PUT"],
-    )
-    application.add_api_route(
-        "/webhook/sample_entity/{sample_entity_key}/increment_counter",
-        sample_entity_resource.on_put_increment_counter,
-        methods=["PUT"],
-    )
-    application.add_api_route(
-        "/sample_entities",
-        sample_entity_resource.on_get_list,
+        "/accounts/{account_key}",
+        account_resource.on_get_by_key,
         methods=["GET"],
     )
+
+    application.add_api_route(
+        "/accounts/{account_key}/entries",
+        account_resource.on_get_entries,
+        methods=["GET"],
+    )
+    application.add_api_route("/deposits", operation_resource.on_post_deposit, methods=["POST"])
+    application.add_api_route("/transfers", operation_resource.on_post_transfer, methods=["POST"])
+    application.add_api_route(
+        "/operations/{operation_key}",
+        operation_resource.on_get_by_key,
+        methods=["GET"],
+    )
+
+    application.add_api_route("/fees", fee_resource.on_get_list, methods=["GET"])
 
     register_error_handlers(application)
 

@@ -47,6 +47,7 @@ dist/
 env/
 venv/
 .venv/
+.venv-lint/
 
 # --- Testes e cobertura ------------------------------------
 .pytest_cache/

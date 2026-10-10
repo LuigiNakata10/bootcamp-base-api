@@ -23,6 +23,9 @@ def error_verification():
 
 
 class QIException(Exception):
+    # Cabeçalhos extras da resposta (ex.: Retry-After). A maioria dos erros não tem.
+    headers = None
+
     def __init__(self, title, code, http_status, description, translation) -> None:
         self.title = title
         self.description = description

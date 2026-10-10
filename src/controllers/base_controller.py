@@ -1,7 +1,17 @@
 from abc import ABCMeta
+from contextlib import contextmanager
+
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError, OperationalError
 
 from database import get_context
+from errors import LockTimeout
 from utils.logger import get_logger
+
+# SQLSTATE do Postgres: 55P03 é "a trava não ficou disponível a tempo" (lock_timeout)
+# e 23505 é "violou um UNIQUE".
+LOCK_NOT_AVAILABLE = "55P03"
+UNIQUE_VIOLATION = "23505"
 
 
 class BaseController(metaclass=ABCMeta):
@@ -22,3 +32,25 @@ class BaseController(metaclass=ABCMeta):
         self.context = get_context()
         self.session = self.context.get_or_create_session()
         self.logger = get_logger(class_name)
+
+    def start_write_transaction(self) -> None:
+        """Limita a 5 s a espera por uma trava, só nesta transação (SET LOCAL).
+
+        Estourou, o Postgres levanta 55P03 e o `lock_timeout_guard` o transforma em 503.
+        """
+        self.session.execute(text("SET LOCAL lock_timeout = '5s'"))
+
+    @contextmanager
+    def lock_timeout_guard(self):
+        """Espera de trava acima de 5 s: desfaz tudo e responde 503 QIT002010."""
+        try:
+            yield
+        except OperationalError as error:
+            if getattr(error.orig, "pgcode", None) == LOCK_NOT_AVAILABLE:
+                self.session.rollback()
+                raise LockTimeout() from None
+            raise
+
+    @staticmethod
+    def is_unique_violation(error: IntegrityError) -> bool:
+        return getattr(error.orig, "pgcode", None) == UNIQUE_VIOLATION

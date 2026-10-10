@@ -1,6 +1,6 @@
 # Como o projeto é organizado
 
-Dentro de `src/` tem dez pastas. Para um programa que responde oito
+Dentro de `src/` tem dez pastas. Para um programa que responde dez
 endereços, parece muita pasta — e no começo assusta mesmo.
 
 Este texto explica por que elas existem, o que cada uma pode e não pode
@@ -15,7 +15,7 @@ estiver perdido.
 ## 1. O caminho de uma requisição
 
 Toda requisição atravessa as mesmas camadas, sempre na mesma ordem.
-Este é o `POST /sample_entity`, que cria uma entidade:
+Este é o `POST /transfers`, que move dinheiro entre duas contas:
 
 ```
   requisição chega
@@ -32,9 +32,12 @@ Este é o `POST /sample_entity`, que cria uma entidade:
         ↓              (antes da 1ª linha da rota rodar, src/schemas/
         ↓               confere o JSON. Torto, para aqui: 400)
         ↓
-  src/controllers/     pode fazer isso? é aqui que mora a regra
+  src/controllers/     pode fazer isso? essa chave já foi usada? tem
+        ↓              saldo? é aqui que moram a regra, a trava das
+        ↓              contas e o commit
         ↓
   src/repositories/    a conversa com o banco — só aqui existe consulta
+        ↓              (reservar a chave, travar as contas, gravar)
         ↓
   src/models/          a tabela, descrita em Python
         ↓
@@ -49,6 +52,13 @@ Repare no que isso compra: quando o código chega no **controller**, o
 JSON já foi conferido. Quando chega no **repository**, a decisão já foi
 tomada. Cada camada confia no trabalho da anterior e só cuida do seu
 pedaço.
+
+Na transferência, três decisões moram no **controller** e em nenhum
+outro lugar: a chave da operação já foi usada? (repetida com os mesmos
+dados, devolve o resultado de antes; com dados diferentes, recusa), a
+origem tem saldo para `valor + tarifa`? e o valor cabe no saldo do
+destino? Só depois disso o dinheiro se move, e o `commit` é a última
+linha antes do `return`.
 
 Abra os arquivos e siga o caminho uma vez. Vale mais que ler três vezes
 este texto.
@@ -71,12 +81,13 @@ este texto.
 | `utils/` | ferramenta de uso geral — aqui, o logger e o identificador da requisição | virar o depósito do que não se sabe onde pôr |
 
 Um exemplo do que isso significa na prática: em
-`src/controllers/sample_entity_controller.py` você lê
-`if old_status != "pending": raise SampleEntityFinalStatus(...)`. Essa
-frase é a regra do negócio, e ela mora no controller. Em
-`src/repositories/sample_entity_repository.py` não existe nenhuma frase
-dessas: o único `if` de lá decide se a busca leva um filtro a mais, e
-isso não é regra — é jeito de buscar.
+`src/controllers/operation_controller.py` você lê
+`if source.balance < amount + fee_amount: ... raise InsufficientBalance(...)`.
+Essa frase é a regra do negócio, e ela mora no controller. Em
+`src/repositories/account_repository.py` não existe nenhuma frase dessas:
+o que parece uma decisão ali, o `order_by(Account.account_key)` de
+`lock_by_keys`, não é regra — é jeito de travar, sempre na mesma ordem,
+para duas transferências não ficarem esperando uma pela outra.
 
 ### "E a conexão com o banco, em qual pasta ela mora?"
 
@@ -136,7 +147,7 @@ middleware era escrito; a história está na docstring dele.
 
 **E o `commit`?** Nunca é do middleware. Quem sabe se o trabalho terminou
 é o controller, e é por isso que `self.session.commit()` é a última linha
-antes do `return` em `src/controllers/sample_entity_controller.py`. O
+antes do `return` em `src/controllers/operation_controller.py`. O
 middleware cuida do ciclo de vida; o controller decide o conteúdo.
 
 Abra os dois arquivos na ordem — o middleware primeiro, o `database.py`
@@ -149,11 +160,11 @@ combinado inteiro.
 
 | Quero... | Mexo em | Na ordem |
 |---|---|---|
-| **aceitar um campo novo** no JSON de entrada | `src/schemas/post_sample_entity.json` | se o campo vai para o banco, também `database/database.sql` e `src/models/` |
-| **mudar o que a resposta devolve** | `src/dtos/sample_entity_dto.py` | é o único lugar; se o campo ainda não existe no banco, antes disso `database/database.sql` e `src/models/` |
-| **criar uma rota nova** numa entidade que já existe | `src/resources/sample_entity.py` | registrar o endereço em `src/app.py`, e o método no controller se a regra for nova |
-| **mudar uma regra** ("não pode X") | `src/controllers/sample_entity_controller.py` | e um erro novo em `src/errors/custom_errors.py`, se precisar |
-| **consultar o banco de outro jeito** (filtrar, ordenar, contar) | `src/repositories/sample_entity_repository.py` | o controller chama o método novo |
+| **aceitar um campo novo** no JSON de entrada | `src/schemas/post_transfer.json` (ou `post_deposit.json`, `post_company.json`) | se o campo vai para o banco, também `database/database.sql` e `src/models/` |
+| **mudar o que a resposta devolve** | `src/dtos/operation_dto.py` (ou `account_dto.py`, `company_dto.py`) | é o único lugar; se o campo ainda não existe no banco, antes disso `database/database.sql` e `src/models/` |
+| **criar uma rota nova** numa entidade que já existe | `src/resources/operation.py` | registrar o endereço em `src/app.py`, e o método no controller se a regra for nova |
+| **mudar uma regra** ("não pode X") | `src/controllers/operation_controller.py` | e um erro novo em `src/errors/custom_errors.py`, se precisar |
+| **consultar o banco de outro jeito** (filtrar, ordenar, contar) | `src/repositories/operation_repository.py` (ou `account_repository.py`, `entry_repository.py`) | o controller chama o método novo |
 | **criar uma tabela** | `database/database.sql` | depois `src/models/` e o `__init__.py` da pasta |
 | **criar uma entidade inteira** (rota + regra + tabela) | um arquivo em cada pasta | `database.sql` → `models/` → `repositories/` → `controllers/` → `schemas/` → `resources/` → registrar em `src/app.py` |
 | **fazer algo em toda requisição** | `src/middlewares/` | registrar em `src/app.py` |
@@ -169,16 +180,16 @@ mensagem nenhuma.
 `src/repositories/__init__.py`) e acrescente a sua linha.
 
 **E a ORDEM das linhas do `src/models/__init__.py` importa.** Abra
-`src/models/sample_entity.py` e repare no `from models import
-SampleEntityStatus`: o arquivo importa de dentro do próprio pacote em
-que ele mora. Isso só funciona porque o `__init__.py` lista o
-`SampleEntityStatus` **antes** do `SampleEntity` — quando a linha do
-`SampleEntity` roda, o status já foi carregado.
+`src/models/account.py` e repare no `from models import Company`: o
+arquivo importa de dentro do próprio pacote em que ele mora. Isso só
+funciona porque o `__init__.py` lista o `Company` **antes** do
+`Account` (e depois `Operation` e `Entry`, que dependem da conta) —
+quando a linha do `Account` roda, a empresa já foi carregada.
 
 Inverta as duas linhas e o Python responde:
 
 ```
-ImportError: cannot import name 'SampleEntityStatus' from partially
+ImportError: cannot import name 'Company' from partially
 initialized module 'models' (most likely due to a circular import)
 ```
 
@@ -292,12 +303,20 @@ Duas pastas falam de formato, e é fácil confundi-las. A divisão é a
 direção: **o `schemas/` cuida do que ENTRA, o `dtos/` cuida do que
 SAI.**
 
-- `src/schemas/post_sample_entity.json` descreve o JSON que o cliente
+- `src/schemas/post_transfer.json` descreve o JSON que o cliente
   manda. Quem lê isso é o `jsonschema`, antes da primeira linha da rota
   rodar: campo faltando, tipo errado ou campo a mais viram 400 ali
   mesmo. Quem aciona a conferência é o decorator
-  `@SchemaHandler.validate("post_sample_entity.json")` na rota, e o
+  `@SchemaHandler.validate("post_transfer.json")` na rota, e o
   código dele está em `src/utils/schema_handler.py`.
+
+  Um cuidado que o schema sozinho não cobre: o `"type": "integer"` do
+  JSON Schema aceita `1.0`, porque 1.0 "é inteiro". Para dinheiro isso
+  é a porta de entrada de um float, então o próprio `SchemaHandler`
+  recusa qualquer número fracionário no corpo (`reject_floats`), e
+  `1.0` dá 400 como `1.5`. O schema também não sabe de verdade o que
+  é um valor negativo ou grande demais: isso é regra, e mora no
+  controller (422).
 
   **Por que um `.json` e não uma classe Python?** O FastAPI validaria
   sozinho, com uma classe herdando de `BaseModel` — e por um tempo foi
@@ -305,16 +324,18 @@ SAI.**
   de entrada é um arquivo escrito em **JSON Schema**, um padrão que
   existe fora do Python e que quem integra com a API consegue ler sem
   abrir o repositório. O preço é que o corpo chega como dicionário:
-  `payload["hello"]` em vez de `payload.hello`.
-- `src/dtos/sample_entity_dto.py` faz o caminho de volta. O repository
+  `payload["amount"]` em vez de `payload.amount`.
+- `src/dtos/operation_dto.py` faz o caminho de volta. O repository
   entrega o objeto do banco; o DTO devolve um dicionário simples, e é
   esse dicionário que vira o JSON da resposta.
 
-Abra os dois ao lado de `src/models/sample_entity.py` e a diferença
-fica óbvia. Na **tabela**, o `hello` está escondido dentro de uma
-coluna JSON e o status é um número apontando para outra tabela. Na
-**resposta**, os dois são campos planos, com nome de gente. Quem faz
-essa travessia é o DTO, e é por isso que ele existe.
+Abra os dois ao lado de `src/models/operation.py` e a diferença
+fica óbvia. Na **tabela**, a origem é `source_account_id`, um número
+interno que aponta para outra tabela, e `completed_at` é um instante
+sem fuso. Na **resposta**, a origem é `source_account_key` (o UUID, que
+é o que o mundo de fora conhece) e o instante é um texto ISO 8601 em
+UTC. Quem faz essa travessia é o DTO, e é por isso que ele existe — e
+é por isso que nenhum id interno chega ao cliente.
 
 Campo novo na resposta? Acrescente no `dtos/`. Nenhum outro arquivo
 precisa saber.

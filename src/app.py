@@ -9,7 +9,7 @@ from middlewares import (
     register_request_logger_middleware,
     register_session_manager_middleware,
 )
-from resources import HealthCheckResource
+from resources import CompanyResource, HealthCheckResource
 from utils.logger import setup_logging
 
 
@@ -123,12 +123,20 @@ def create_app() -> FastAPI:
     # se a coisa foi criada, agendada ou concluída. Esta lista diz QUEM
     # atende cada endereço, e mais nada.
     health_check_resource = HealthCheckResource()
+    company_resource = CompanyResource()
 
     application.add_api_route("/", health_check_resource.on_get_home, methods=["GET"])
     application.add_api_route(
         "/health_check",
         health_check_resource.on_get_health_check,
         methods=["GET"]
+    )
+
+    application.add_api_route("/companies", company_resource.on_post, methods=["POST"])
+    application.add_api_route(
+        "/companies/{company_key}",
+        company_resource.on_get_by_key,
+        methods=["GET"],
     )
 
     register_error_handlers(application)

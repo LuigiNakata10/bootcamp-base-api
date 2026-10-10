@@ -112,6 +112,8 @@ class SchemaHandler:
                 except ValidationError as error:
                     raise InvalidSchema(describe_schema_error(error))
 
+                reject_floats(kwargs["payload"])
+
                 return func(*args, **kwargs)
 
             return wrapper_validate
@@ -205,3 +207,22 @@ def describe_schema_error(error: ValidationError) -> str:
         return f"{error.message} in {'.'.join(location)}"
 
     return error.message
+
+
+def reject_floats(value) -> None:
+    """Nenhum número fracionário entra por JSON.
+
+    O `"type": "integer"` do jsonschema aceita 1.0, porque 1.0 "é inteiro".
+    Para dinheiro isso é o primeiro passo para um float escondido: aqui, o
+    corpo de qualquer rota só carrega inteiros, e `1.0` é recusado como `1.5`.
+    """
+    if isinstance(value, float):
+        raise InvalidSchema("fractional numbers are not accepted, use integer cents")
+
+    if isinstance(value, dict):
+        for item in value.values():
+            reject_floats(item)
+
+    if isinstance(value, list):
+        for item in value:
+            reject_floats(item)

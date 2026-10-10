@@ -3,8 +3,8 @@
 | | |
 |---|---|
 | **Time** | Bootcamp QI Tech |
-| **Data** | 09/10/2026 |
-| **Versão** | 6.1 |
+| **Data** | 10/10/2026 |
+| **Versão** | 6.2 |
 
 ## Contextualização
 
@@ -14,7 +14,7 @@ Um banco ou fintech, o operador, atende empresas: cadastra cada uma com uma cont
 
 ### Explicando a solução de forma macro
 
-O projeto-base (Python, FastAPI, PostgreSQL, Docker) guarda `COMPANY`, `ACCOUNT`, `OPERATION` e `ENTRY`. O saldo mora numa coluna da conta, em centavos inteiros. Depósito e transferência são linhas de `OPERATION` separadas por `type`, e cada uma gera os lançamentos do extrato: um no depósito; três na transferência (saída, entrada e tarifa fixa de 100 centavos). Cada movimentação é uma transação só, sustentada por três mecanismos: a `operation_key` do operador, com `UNIQUE`, torna o reenvio seguro (o cadastro usa o CNPJ); `SELECT … FOR UPDATE` nas contas, sempre em ordem crescente de `account_key`, impede que duas transferências gastem o mesmo saldo; e um `COMMIT` único impede o meio-termo. Resposta perdida se confere em `GET /operations/{operation_key}`. A arrecadação soma os lançamentos de tarifa, sem conta própria do operador (que seria um segundo saldo a manter igual à soma). Alternativas descartadas:
+O projeto-base (Python, FastAPI, PostgreSQL, Docker) guarda `COMPANY`, `ACCOUNT`, `OPERATION` e `ENTRY`. O saldo mora numa coluna da conta, em centavos inteiros. Depósito e transferência são linhas de `OPERATION` separadas por `type`, e cada uma gera os lançamentos do extrato: um no depósito; três na transferência (saída, entrada e tarifa fixa de 100 centavos). Cada movimentação é uma transação só, sustentada por três mecanismos: a `operation_key` do operador, com `UNIQUE`, torna o reenvio seguro (o cadastro usa o CNPJ); `SELECT … FOR NO KEY UPDATE` nas contas, sempre em ordem crescente de `account_key`, impede que duas transferências gastem o mesmo saldo; e um `COMMIT` único impede o meio-termo. Resposta perdida se confere em `GET /operations/{operation_key}`. A arrecadação soma os lançamentos de tarifa, sem conta própria do operador (que seria um segundo saldo a manter igual à soma). Alternativas descartadas:
 
 - **Não exigir chave de idempotência**, como no projeto-base: após um timeout, o operador escolhe entre talvez debitar duas vezes ou talvez perder a transferência. Ganharia se o operador nunca reenviasse.
 - **Uma tabela por tipo:** o banco recusaria origem nula sem código, mas extrato, consulta por chave e unicidade da chave virariam uniões, e cada regra seria escrita duas vezes; em `OPERATION`, um `CHECK` cobre a origem. Ganharia se os tipos quase não tivessem campos em comum.
@@ -42,7 +42,7 @@ Recursos em inglês e no plural. Todas as rotas, menos `/` e `/health_check`, ex
 
 **Formatos e dinheiro.** CNPJ: 14 caracteres sem máscara; 12 primeiros `A-Z` ou `0-9`, 2 verificadores numéricos por módulo 11 com valor ASCII − 48 (`A` = 17), também no CNPJ só numérico. Minúsculas viram maiúsculas antes de validar, gravar e comparar. Razão social: 1 a 255 caracteres após trim. Chaves: UUID canônico, comparado em minúsculas; nenhum id interno sai. Valores: inteiros em centavos, dentro do BIGINT; crédito que passaria do limite é `422 QIT002009`. Instantes em ISO 8601 UTC.
 
-**Repetição.** A `operation_key` é gerada e guardada pelo operador antes do envio, tem `UNIQUE` global e não expira. A API procura a chave antes de qualquer regra: confirmada com o mesmo tipo, contas e valor, devolve `200` com a resposta e o `completed_at` originais, mesmo que o saldo de hoje já não permitisse; com qualquer dado diferente, `409`. No cadastro, o CNPJ em maiúsculas faz esse papel, comparando a razão social. Timeout ou `5xx` não provam que nada aconteceu: o operador consulta `GET /operations` ou reenvia os mesmos dados após ao menos 1 s. Não existe estado pendente: só o que chegou ao `COMMIT` fica gravado.
+**Repetição.** A `operation_key` é gerada e guardada pelo operador antes do envio, tem `UNIQUE` global e não expira. A API procura a chave antes de qualquer regra: confirmada com o mesmo tipo, contas e valor, devolve `200` com a resposta e o `completed_at` originais, mesmo que o saldo de hoje já não permitisse; com qualquer dado diferente, `409`. No cadastro, o CNPJ em maiúsculas faz esse papel, comparando a razão social. Timeout ou `5xx` não provam que nada aconteceu: o operador consulta `GET /operations/{operation_key}` ou reenvia os mesmos dados após ao menos 1 s. Não existe estado pendente: só o que chegou ao `COMMIT` fica gravado.
 
 **Paginação.** 20 itens, `page` a partir de 0, envelope `data`, `page`, `page_size`, `is_last_page`; ordem por `completed_at` e `ENTRY.id` decrescentes; além do fim, página vazia e última. No extrato, valores positivos e `type` indica o sentido. Em `/fees`, dias UTC inclusivos e `total_amount` do período inteiro, igual em qualquer página.
 
@@ -94,7 +94,7 @@ erDiagram
 
 ### Fluxos
 
-**Transferência — caminho feliz.** (1) Valida token e corpo. (2) Procura a `operation_key`; se existe, `200` ou `409` sem tocar em saldo. (3) Confere contas existentes e distintas e valor positivo no limite; recusado aqui, nada foi reservado. (4) Abre a transação com `lock_timeout` de 5 s e faz `INSERT` em `OPERATION`, reservando a chave sob `UNIQUE`. (5) `SELECT … FOR UPDATE` das contas `ORDER BY account_key` e só então lê os saldos. (6) Confere se a origem cobre `amount + 100` e se o destino cabe no BIGINT. (7) Debita, credita, grava `transfer_out`, `transfer_in` e `fee` e preenche `completed_at`. (8) `COMMIT`, travas liberadas, `201`. O depósito segue os mesmos passos com uma conta e sem tarifa.
+**Transferência — caminho feliz.** (1) Valida token e corpo. (2) Procura a `operation_key`; se existe, `200` ou `409` sem tocar em saldo. (3) Confere contas existentes e distintas e valor positivo no limite; recusado aqui, nada foi reservado. (4) Abre a transação com `lock_timeout` de 5 s e faz `INSERT` em `OPERATION`, reservando a chave sob `UNIQUE`. (5) `SELECT … FOR NO KEY UPDATE` das contas `ORDER BY account_key` e só então lê os saldos. (6) Confere se a origem cobre `amount + 100` e se o destino cabe no BIGINT. (7) Debita, credita, grava `transfer_out`, `transfer_in` e `fee` e preenche `completed_at`. (8) `COMMIT`, travas liberadas, `201`. O depósito segue os mesmos passos com uma conta e sem tarifa.
 
 **Transferência — falha: duas transferências disputam o mesmo saldo**
 
@@ -107,8 +107,8 @@ sequenceDiagram
     Note over B: conta X com saldo 1.100
     O1->>A: POST /transfers X→Y, 1.000
     O2->>A: POST /transfers X→Z, 500
-    A->>B: T1: FOR UPDATE (X, Y)
-    A->>B: T2: FOR UPDATE (X, Z)
+    A->>B: T1: FOR NO KEY UPDATE (X, Y)
+    A->>B: T2: FOR NO KEY UPDATE (X, Z)
     Note over B: T2 espera a trava de X, até 5 s
     A->>B: T1: débito 1.100, crédito, entries, COMMIT
     A-->>O1: 201
@@ -129,8 +129,8 @@ T2 lê o saldo depois da trava e vê 0, então desfaz tudo, inclusive a reserva 
 >
 > - **Qual é:** a transferência acontecer inteira, uma vez só e só com saldo, mesmo com reenvio, disputa pelo mesmo saldo e resposta perdida.
 > - **Por que é difícil:** "ler, conferir e gravar" deixa um intervalo em que outra transferência lê o mesmo saldo, e "procurar a chave e gravar" deixa o mesmo intervalo para dois reenvios. Travar resolve, mas travas em ordem oposta geram deadlock. E falta de resposta não diz se houve `COMMIT`.
-> - **Como o desenho resolve:** reserva da chave por `INSERT` sob `UNIQUE` na mesma transação do dinheiro; contas travadas com `FOR UPDATE` em ordem crescente de `account_key`, saldo lido depois da trava; saldos, operação e lançamentos num único `COMMIT`; espera limitada a 5 s; e `GET /operations/{operation_key}` para recuperar a resposta.
+> - **Como o desenho resolve:** reserva da chave por `INSERT` sob `UNIQUE` na mesma transação do dinheiro; contas travadas com `FOR NO KEY UPDATE` em ordem crescente de `account_key`, saldo lido depois da trava (não `FOR UPDATE`: o `INSERT` da operação, feito antes para reservar a chave, tem FK para as contas e pega `FOR KEY SHARE` nelas, que conflita com `FOR UPDATE`; duas transferências sobre as mesmas contas davam deadlock mesmo com a ordem certa, o que os testes de concorrência revelaram); saldos, operação e lançamentos num único `COMMIT`; espera limitada a 5 s; e `GET /operations/{operation_key}` para recuperar a resposta.
 
 ### Estratégia de testes
 
-Black box com `pytest` contra API e Postgres reais (`docker compose up`, `pytest -v`), só por HTTP, sem importar `src/`. Cada teste cria o próprio mundo pelas rotas, confere status, corpo e `code`, e toda recusa da tabela tem um teste que fica vermelho se deixar de barrar (TDD). Ao fim de cada cenário, nas contas do teste: nenhum saldo negativo; saldo igual ao extrato; soma dos saldos igual a depósitos menos tarifas; 1 lançamento por depósito e 3 por transferência; `total_amount` igual à soma das tarifas. **Concorrência:** N transferências com saldo para parte delas (só as que cabem passam); A→B e B→A (sem deadlock); mesma chave e mesmo CNPJ em paralelo (um `201`, demais `200`). **Retentativa:** resposta descartada, `GET /operations` e reenvio (`200` original); mesma chave com outros dados (`409`); reenvio após o saldo mudar (`200`, não `422`). **Validação e consultas:** CNPJ numérico, alfanumérico e em minúsculas; `amount` inválido e acima do BIGINT; primeira, última e além da última página; tarifa na virada do dia UTC. **Fora da caixa-preta**, por conexão direta ao Postgres como o `DbUtils` do projeto-base: trava segurada por 6 s (`503`, depois reenvio confirmado) e trigger que falha no `INSERT` de `ENTRY` (`500`, nada gravado).
+Black box com `pytest` contra API e Postgres reais (`docker compose up`, `pytest -v`), só por HTTP, sem importar `src/`. Cada teste cria o próprio mundo pelas rotas, confere status, corpo e `code`, e toda recusa da tabela tem um teste que fica vermelho se deixar de barrar (TDD). Ao fim de cada cenário, nas contas do teste: nenhum saldo negativo; saldo igual ao extrato; soma dos saldos igual a depósitos menos tarifas; 1 lançamento por depósito e 3 por transferência; `total_amount` igual à soma das tarifas. **Concorrência:** N transferências com saldo para parte delas (só as que cabem passam); A→B e B→A (sem deadlock); mesma chave e mesmo CNPJ em paralelo (um `201`, demais `200`). **Retentativa:** resposta descartada, `GET /operations` e reenvio (`200` original); mesma chave com outros dados (`409`); reenvio após o saldo mudar (`200`, não `422`). **Validação e consultas:** CNPJ numérico, alfanumérico e em minúsculas; `amount` inválido e acima do BIGINT; primeira, última e além da última página; dias UTC inclusivos nas duas pontas do período. **Fora da caixa-preta**, por conexão direta ao Postgres como o `DbUtils` do projeto-base: trava segurada além dos 5 s (`503` com `Retry-After`, depois reenvio confirmado) e trigger que falha no `INSERT` de `ENTRY` (`500`, nada gravado).

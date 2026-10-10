@@ -98,3 +98,58 @@ class TestResilience:
 
         status, _ = RequestGenerator.POST_deposit(payload)
         assert status == 201
+
+
+APPEND_ONLY_TRIGGER = """
+CREATE OR REPLACE FUNCTION forbid_change() RETURNS trigger AS $$
+BEGIN
+    RAISE EXCEPTION 'historico e append-only: % em %', TG_OP, TG_TABLE_NAME;
+END;
+$$ LANGUAGE plpgsql
+"""
+
+
+class TestAppendOnly:
+    def test_money_history_is_never_updated_or_deleted(self):
+        """Só o saldo da conta sofre UPDATE; o resto do histórico só recebe linhas novas (R4).
+
+        O banco é instruído a RECUSAR qualquer UPDATE ou DELETE em company, operation e entry
+        (e DELETE em account). Se a API tentasse mexer em uma linha que já existe, o pedido
+        viraria 500 e este teste ficaria vermelho.
+        """
+        engine = create_engine(DbUtils.database_url(), isolation_level="AUTOCOMMIT")
+        guarded = ["company", "operation", "entry"]
+
+        try:
+            with engine.connect() as connection:
+                connection.execute(text(APPEND_ONLY_TRIGGER))
+                for table in guarded:
+                    connection.execute(
+                        text(f"CREATE TRIGGER forbid_change BEFORE UPDATE OR DELETE ON {table} "
+                             "FOR EACH ROW EXECUTE FUNCTION forbid_change()")
+                    )
+                connection.execute(
+                    text("CREATE TRIGGER forbid_change BEFORE DELETE ON account "
+                         "FOR EACH ROW EXECUTE FUNCTION forbid_change()")
+                )
+
+                try:
+                    company = ObjectGenerator.create_company()
+                    source = company["account_key"]
+                    destination = ObjectGenerator.create_account()
+                    statuses = [
+                        RequestGenerator.POST_deposit(PayloadGenerator.create_deposit_payload(source, 5000))[0],
+                        RequestGenerator.POST_transfer(
+                            PayloadGenerator.create_transfer_payload(source, destination, 1000)
+                        )[0],
+                    ]
+                finally:
+                    for table in guarded + ["account"]:
+                        connection.execute(text(f"DROP TRIGGER IF EXISTS forbid_change ON {table}"))
+                    connection.execute(text("DROP FUNCTION IF EXISTS forbid_change()"))
+        finally:
+            engine.dispose()
+
+        assert statuses == [201, 201]
+        assert ObjectGenerator.balance(source) == 5000 - 1000 - 100
+        assert ObjectGenerator.balance(destination) == 1000

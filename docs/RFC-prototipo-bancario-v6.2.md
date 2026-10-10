@@ -3,8 +3,8 @@
 | | |
 |---|---|
 | **Time** | Renan Correia · Luigi Nakata |
-| **Data** | 10/10/2026 |
-| **Versão** | 6.2 |
+| **Data** | 11/10/2026 |
+| **Versão** | 6.3 |
 
 ## Contextualização
 
@@ -80,7 +80,7 @@ erDiagram
         integer destination_account_id FK "obrigatorio"
         bigint amount "CHECK > 0"
         bigint fee_amount "CHECK 0 ou 100"
-        timestamp completed_at "instante UTC"
+        timestamp completed_at "UTC da reserva; gravado uma vez"
     }
     ENTRY {
         serial id PK "desempate"
@@ -94,7 +94,7 @@ erDiagram
 
 ### Fluxos
 
-**Transferência — caminho feliz.** (1) Valida token e corpo. (2) Procura a `operation_key`; se existe, `200` ou `409` sem tocar em saldo. (3) Confere contas existentes e distintas e valor positivo no limite; recusado aqui, nada foi reservado. (4) Abre a transação com `lock_timeout` de 5 s e faz `INSERT` em `OPERATION`, reservando a chave sob `UNIQUE`. (5) `SELECT … FOR NO KEY UPDATE` das contas `ORDER BY account_key` e só então lê os saldos. (6) Confere se a origem cobre `amount + 100` e se o destino cabe no BIGINT. (7) Debita, credita, grava `transfer_out`, `transfer_in` e `fee` e preenche `completed_at`. (8) `COMMIT`, travas liberadas, `201`. O depósito segue os mesmos passos com uma conta e sem tarifa.
+**Transferência — caminho feliz.** (1) Valida token e corpo. (2) Procura a `operation_key`; se existe, `200` ou `409` sem tocar em saldo. (3) Confere contas existentes e distintas e valor positivo no limite; recusado aqui, nada foi reservado. (4) Abre a transação com `lock_timeout` de 5 s e faz `INSERT` em `OPERATION`, reservando a chave sob `UNIQUE`. (5) `SELECT … FOR NO KEY UPDATE` das contas `ORDER BY account_key` e só então lê os saldos. (6) Confere se a origem cobre `amount + 100` e se o destino cabe no BIGINT. (7) Debita, credita e grava `transfer_out`, `transfer_in` e `fee`; o `completed_at` já foi gravado na reserva do passo (4) e a linha de `OPERATION` nunca é atualizada depois. (8) `COMMIT`, travas liberadas, `201`. O depósito segue os mesmos passos com uma conta e sem tarifa.
 
 **Transferência — falha: duas transferências disputam o mesmo saldo**
 

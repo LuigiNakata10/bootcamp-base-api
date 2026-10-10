@@ -40,6 +40,8 @@ class OperationRepository:
         operation.destination_account = destination_account
         operation.amount = amount
         operation.fee_amount = fee_amount
+        # O instante é o da reserva e é gravado uma única vez: a linha nunca é atualizada.
+        # Só vira visível quando a transação confirma, e `operation` sem COMMIT não existe.
         operation.completed_at = utc_now()
 
         self.session.add(operation)
@@ -56,6 +58,3 @@ class OperationRepository:
 
         self.session.add(entry)
         return entry
-
-    def finish(self, operation: Operation) -> None:
-        operation.completed_at = utc_now()

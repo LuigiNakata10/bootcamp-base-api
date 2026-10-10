@@ -163,8 +163,6 @@ class OperationController(BaseController):
 
         destination.balance = destination.balance + amount
 
-        self.operation_repository.finish(operation)
-
     def _repeated(self, operation: Operation, operation_type: str, source_key, destination_key: str, amount: int) -> dict:
         """Mesma chave: com os mesmos dados é a resposta original; com qualquer dado diferente, conflito."""
         source = operation.source_account

@@ -153,6 +153,7 @@ def create_app() -> FastAPI:
         methods=["GET"],
     )
     application.add_api_route("/deposits", operation_resource.on_post_deposit, methods=["POST"])
+    application.add_api_route("/transfers", operation_resource.on_post_transfer, methods=["POST"])
     application.add_api_route(
         "/operations/{operation_key}",
         operation_resource.on_get_by_key,

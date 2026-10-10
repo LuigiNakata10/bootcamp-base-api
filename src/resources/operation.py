@@ -7,12 +7,19 @@ from utils.schema_handler import SchemaHandler
 
 
 class OperationResource:
-    """Depósitos e consulta de operações. O 201 é de operação nova; o 200, de repetição."""
+    """Depósitos, transferências e consulta de operações. O 201 é de operação nova; o 200, de repetição."""
 
     @SchemaHandler.validate("post_deposit.json")
     def on_post_deposit(self, payload: dict) -> JSONResponse:
         controller = OperationController()
         operation, created = controller.deposit(payload)
+
+        return JSONResponse(content=jsonable_encoder(operation), status_code=success_status(created))
+
+    @SchemaHandler.validate("post_transfer.json")
+    def on_post_transfer(self, payload: dict) -> JSONResponse:
+        controller = OperationController()
+        operation, created = controller.transfer(payload)
 
         return JSONResponse(content=jsonable_encoder(operation), status_code=success_status(created))
 

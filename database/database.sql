@@ -1,36 +1,63 @@
-CREATE TABLE sample_entity_status(
-    id		                        SERIAL PRIMARY KEY,
-    enumerator                      VARCHAR(50) NOT NULL,
-    created_at                      TIMESTAMP NOT NULL DEFAULT(NOW()),
-    UNIQUE(enumerator)
-);
+-- Protótipo bancário. A fonte de verdade do schema (não há migrations):
+-- este arquivo só roda quando o banco nasce. Mudou? `docker compose down -v`.
 
-INSERT INTO sample_entity_status (enumerator) VALUES
-('created'),
-('pending'),
-('success'),
-('failed');
-
-CREATE TABLE sample_entity(
+CREATE TABLE company(
     id                              SERIAL PRIMARY KEY,
-    sample_entity_key               CHAR(36) NOT NULL,
-    status_id                       INTEGER NOT NULL REFERENCES sample_entity_status(id),
-    sample_entity_data              JSONB NOT NULL,
-    name                            VARCHAR(255) NOT NULL,
-    email                           VARCHAR(255) NOT NULL,
-    document_number                 CHAR(14) NOT NULL,
-    birthdate                       DATE NOT NULL,
-    counter                         INTEGER NOT NULL,
+    company_key                     CHAR(36) NOT NULL,
+    legal_name                      VARCHAR(255) NOT NULL,
+    cnpj                            CHAR(14) NOT NULL,
     created_at                      TIMESTAMP NOT NULL DEFAULT(NOW()),
-    UNIQUE(sample_entity_key),
-    UNIQUE(document_number),
-    UNIQUE(email)
+    UNIQUE(company_key),
+    UNIQUE(cnpj),
+    CONSTRAINT legal_name_not_blank CHECK (char_length(btrim(legal_name)) BETWEEN 1 AND 255)
 );
 
-CREATE TABLE sample_entity_status_event(
+CREATE TABLE account(
     id                              SERIAL PRIMARY KEY,
-    sample_entity_id                INTEGER NOT NULL REFERENCES sample_entity(id),
-    status_id                       INTEGER NOT NULL REFERENCES sample_entity_status(id),
-    event_datetime                  TIMESTAMP NOT NULL,
-    created_at                      TIMESTAMP NOT NULL DEFAULT(NOW())
+    account_key                     CHAR(36) NOT NULL,
+    company_id                      INTEGER NOT NULL REFERENCES company(id),
+    balance                         BIGINT NOT NULL DEFAULT 0,
+    created_at                      TIMESTAMP NOT NULL DEFAULT(NOW()),
+    UNIQUE(account_key),
+    UNIQUE(company_id),
+    CONSTRAINT balance_not_negative CHECK (balance >= 0)
 );
+
+CREATE TABLE operation(
+    id                              SERIAL PRIMARY KEY,
+    operation_key                   CHAR(36) NOT NULL,
+    type                            VARCHAR(50) NOT NULL,
+    source_account_id               INTEGER REFERENCES account(id),
+    destination_account_id          INTEGER NOT NULL REFERENCES account(id),
+    amount                          BIGINT NOT NULL,
+    fee_amount                      BIGINT NOT NULL,
+    completed_at                    TIMESTAMP NOT NULL DEFAULT(NOW() AT TIME ZONE 'UTC'),
+    UNIQUE(operation_key),
+    CONSTRAINT operation_type_valid CHECK (type IN ('deposit', 'transfer')),
+    CONSTRAINT operation_amount_positive CHECK (amount > 0),
+    CONSTRAINT operation_fee_valid CHECK (fee_amount IN (0, 100)),
+    -- depósito não tem origem e não paga tarifa; transferência tem as duas
+    -- contas, distintas, e paga a tarifa fixa
+    CONSTRAINT operation_shape CHECK (
+        (type = 'deposit' AND source_account_id IS NULL AND fee_amount = 0)
+        OR
+        (type = 'transfer' AND source_account_id IS NOT NULL
+            AND source_account_id <> destination_account_id AND fee_amount = 100)
+    )
+);
+
+CREATE TABLE entry(
+    id                              SERIAL PRIMARY KEY,
+    entry_key                       CHAR(36) NOT NULL,
+    operation_id                    INTEGER NOT NULL REFERENCES operation(id),
+    account_id                      INTEGER NOT NULL REFERENCES account(id),
+    type                            VARCHAR(50) NOT NULL,
+    amount                          BIGINT NOT NULL,
+    UNIQUE(entry_key),
+    UNIQUE(operation_id, account_id, type),
+    CONSTRAINT entry_type_valid CHECK (type IN ('deposit', 'transfer_in', 'transfer_out', 'fee')),
+    CONSTRAINT entry_amount_positive CHECK (amount > 0)
+);
+
+CREATE INDEX entry_account_id_idx ON entry(account_id);
+CREATE INDEX operation_completed_at_idx ON operation(completed_at);

@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Time** | Bootcamp QI Tech |
+| **Time** | Renan Correia · Luigi Nakata |
 | **Data** | 10/10/2026 |
 | **Versão** | 6.2 |
 

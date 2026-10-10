@@ -40,3 +40,18 @@ class EntryDTO:
     @staticmethod
     def list_obj_to_list_dict(entries: list) -> list:
         return [EntryDTO.obj_to_dict(entry) for entry in entries]
+
+
+class FeeDTO:
+
+    @staticmethod
+    def list_obj_to_list_dict(entries: list) -> list:
+        fees = []
+
+        for entry in entries:
+            fee = EntryDTO.obj_to_dict(entry)
+            fee["account_key"] = entry.account.account_key
+            del fee["type"]
+            fees.append(fee)
+
+        return fees

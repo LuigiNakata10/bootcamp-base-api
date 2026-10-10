@@ -1,3 +1,7 @@
+from datetime import datetime
+
+from sqlalchemy import func
+
 from database import Context
 from models import Entry, Operation
 
@@ -17,4 +21,26 @@ class EntryRepository:
             .limit(limit)
             .offset(offset)
             .all()
+        )
+
+    def list_fees(self, start: datetime, end: datetime, limit: int, offset: int) -> list:
+        """Lançamentos de tarifa com `start <= completed_at < end`, mais novo primeiro."""
+        return (
+            self._fees_between(self.session.query(Entry), start, end)
+            .order_by(Operation.completed_at.desc(), Entry.id.desc())
+            .limit(limit)
+            .offset(offset)
+            .all()
+        )
+
+    def sum_fees(self, start: datetime, end: datetime) -> int:
+        total = self._fees_between(self.session.query(func.coalesce(func.sum(Entry.amount), 0)), start, end).scalar()
+        return int(total)
+
+    def _fees_between(self, query, start: datetime, end: datetime):
+        return (
+            query.join(Operation, Entry.operation_id == Operation.id)
+            .filter(Entry.type == Entry.FEE)
+            .filter(Operation.completed_at >= start)
+            .filter(Operation.completed_at < end)
         )

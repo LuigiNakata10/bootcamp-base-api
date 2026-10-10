@@ -27,7 +27,7 @@ flake8   # config em .flake8 (max-line-length 140)
 
 ## Arquitetura
 
-Código em `src/` (imports a partir de `src/`, ex.: `from errors import ...`; o container roda `uvicorn app:app`). Cada requisição atravessa camadas em ordem fixa (detalhe em `docs/como-o-projeto-e-organizado.md`, que ainda usa o `sample_entity` como exemplo didático):
+Código em `src/` (imports a partir de `src/`, ex.: `from errors import ...`; o container roda `uvicorn app:app`). Cada requisição atravessa camadas em ordem fixa (detalhe em `docs/como-o-projeto-e-organizado.md`):
 
 middlewares → resources → (validação por `schemas/*.json`) → controllers → repositories → models → banco → dtos
 

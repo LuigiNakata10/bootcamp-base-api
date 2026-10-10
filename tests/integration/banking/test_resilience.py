@@ -7,7 +7,7 @@ API (empresa, conta, depósito); o banco só é usado para provocar a falha.
 """
 from sqlalchemy import create_engine, text
 
-from tests.utils import DbUtils, INTERNAL_TOKEN, ObjectGenerator, PayloadGenerator, RequestGenerator
+from tests.utils import DbUtils, INTERNAL_TOKEN, ObjectGenerator, PayloadGenerator, RandomGenerator, RequestGenerator
 from tests.utils.requisition import ClientRequisition
 
 FAILING_AMOUNT = 777
@@ -98,6 +98,110 @@ class TestResilience:
 
         status, _ = RequestGenerator.POST_deposit(payload)
         assert status == 201
+
+    def test_company_waiting_on_a_cnpj_held_by_another_transaction_is_503(self):
+        """O cadastro também espera no máximo 5 s: CNPJ preso por outra transação vira 503."""
+        payload = PayloadGenerator.create_company_payload()
+
+        engine = create_engine(DbUtils.database_url())
+        try:
+            with engine.connect() as connection:
+                # Uma transação ainda não confirmada que já ocupa este CNPJ no índice UNIQUE.
+                connection.execute(
+                    text("INSERT INTO company (company_key, legal_name, cnpj) VALUES (:key, :name, :cnpj)"),
+                    {"key": RandomGenerator.generate_uuid(), "name": payload["legal_name"], "cnpj": payload["cnpj"]},
+                )
+
+                response = ClientRequisition.send(
+                    "POST", "/companies", payload=payload, headers={"INTERNAL-TOKEN": INTERNAL_TOKEN}
+                )
+
+                assert response.response_status == 503
+                assert response.response_json["code"] == "QIT002010"
+                assert response.response.headers["Retry-After"] == "1"
+
+                connection.rollback()
+        finally:
+            engine.dispose()
+
+        status, _ = RequestGenerator.POST_company(payload)
+        assert status == 201
+
+    def test_deposit_waiting_on_a_locked_account_is_503_and_the_same_key_can_be_resent(self):
+        account_key = ObjectGenerator.create_account(balance=1000)
+        payload = PayloadGenerator.create_deposit_payload(account_key, 500)
+
+        engine = create_engine(DbUtils.database_url())
+        try:
+            with engine.connect() as connection:
+                connection.execute(
+                    text("SELECT id FROM account WHERE account_key = :key FOR UPDATE"), {"key": account_key}
+                )
+
+                response = ClientRequisition.send(
+                    "POST", "/deposits", payload=payload, headers={"INTERNAL-TOKEN": INTERNAL_TOKEN}
+                )
+
+                assert response.response_status == 503
+                assert response.response_json["code"] == "QIT002010"
+                assert response.response.headers["Retry-After"] == "1"
+
+                connection.rollback()
+        finally:
+            engine.dispose()
+
+        assert ObjectGenerator.balance(account_key) == 1000
+        status, _ = RequestGenerator.GET_operation(payload["operation_key"])
+        assert status == 404
+
+        status, _ = RequestGenerator.POST_deposit(payload)
+        assert status == 201
+        assert ObjectGenerator.balance(account_key) == 1500
+
+    def test_failure_between_company_and_account_stores_neither(self):
+        """Nunca empresa sem conta: se a conta não nasce, a empresa também não fica gravada."""
+        payload = PayloadGenerator.create_company_payload(legal_name="Falha Provocada Ltda")
+
+        engine = create_engine(DbUtils.database_url(), isolation_level="AUTOCOMMIT")
+        try:
+            with engine.connect() as connection:
+                connection.execute(
+                    text(
+                        """
+                        CREATE OR REPLACE FUNCTION fail_account_insert() RETURNS trigger AS $$
+                        BEGIN
+                            IF EXISTS (SELECT 1 FROM company
+                                       WHERE id = NEW.company_id AND legal_name = 'Falha Provocada Ltda') THEN
+                                RAISE EXCEPTION 'falha provocada pelo teste';
+                            END IF;
+                            RETURN NEW;
+                        END;
+                        $$ LANGUAGE plpgsql
+                        """
+                    )
+                )
+                connection.execute(
+                    text(
+                        "CREATE TRIGGER fail_account_insert BEFORE INSERT ON account "
+                        "FOR EACH ROW EXECUTE FUNCTION fail_account_insert()"
+                    )
+                )
+
+                try:
+                    status, response = RequestGenerator.POST_company(payload)
+                finally:
+                    connection.execute(text("DROP TRIGGER IF EXISTS fail_account_insert ON account"))
+                    connection.execute(text("DROP FUNCTION IF EXISTS fail_account_insert()"))
+        finally:
+            engine.dispose()
+
+        assert status == 500
+        assert response["code"] == "QIT000500"
+
+        # 201, e não 200: se a empresa tivesse ficado gravada sem conta, o reenvio a encontraria.
+        status, created = RequestGenerator.POST_company(payload)
+        assert status == 201
+        assert ObjectGenerator.balance(created["account_key"]) == 0
 
 
 APPEND_ONLY_TRIGGER = """

@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Protótipo bancário do Bootcamp QI Tech 2026 (README e docs em português): API REST em FastAPI + PostgreSQL, rodando em Docker. O contrato (tabelas, rotas, status, códigos de erro, mecanismos) está na RFC mais recente em `docs/` (hoje `RFC-prototipo-bancario-v6.2.md`); **a RFC vence** se código e texto divergirem — corrija um dos dois e suba a versão da RFC. O PDF da RFC é gerado fora do repositório.
+Protótipo bancário do Bootcamp QI Tech 2026 (README e docs em português): API REST em FastAPI + PostgreSQL, rodando em Docker. O contrato (tabelas, rotas, status, códigos de erro, mecanismos) está na RFC mais recente em `docs/` (hoje `RFC-prototipo-bancario-v6.3.md`); **a RFC vence** se código e texto divergirem — corrija um dos dois e suba a versão da RFC. O PDF da banca (`docs/RFC-prototipo-bancario-v6_3.pdf`) é gerado a partir do `.md` fora do repositório: ao mudar a RFC, suba a versão no `.md` e gere o PDF de novo (os PDFs v1–v6.0 são só histórico).
 
 ## Comandos
 

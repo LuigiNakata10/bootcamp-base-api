@@ -5,8 +5,9 @@ fintech) cadastra **empresas** (cada uma com uma conta), faz **depósitos** e **
 tarifa**, consulta o **extrato paginado** e confere a **arrecadação de tarifas** de um período.
 
 O desenho completo, com as decisões tomadas e as descartadas, está na RFC:
-[docs/RFC-prototipo-bancario-v6.2.md](docs/RFC-prototipo-bancario-v6.2.md). Este README só diz como
-subir, testar e chamar.
+[docs/RFC-prototipo-bancario-v6.3.md](docs/RFC-prototipo-bancario-v6.3.md) (versão final; o PDF
+para a banca é [docs/RFC-prototipo-bancario-v6_3.pdf](docs/RFC-prototipo-bancario-v6_3.pdf), e as
+versões anteriores ficam em `docs/` só como histórico). Este README só diz como subir, testar e chamar.
 
 As três garantias do serviço:
 

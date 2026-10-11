@@ -4,14 +4,20 @@
   "properties": {
     "operation_key": {
       "type": "string",
+      "minLength": 36,
+      "maxLength": 36,
       "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
     },
     "source_account_key": {
       "type": "string",
+      "minLength": 36,
+      "maxLength": 36,
       "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
     },
     "destination_account_key": {
       "type": "string",
+      "minLength": 36,
+      "maxLength": 36,
       "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
     },
     "amount": {

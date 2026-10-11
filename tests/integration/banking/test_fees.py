@@ -122,7 +122,7 @@ class TestFees:
             assert response["code"] == "QIT000010"
 
     def test_invalid_page_is_invalid_parameter(self):
-        for page in ("-1", "abc", "1.5"):
+        for page in ("-1", "abc", "1.5", "0\n"):
             status, response = RequestGenerator.GET_fees({**around_today(), "page": page})
             assert status == 400, page
             assert response["code"] == "QIT000010"

@@ -40,7 +40,7 @@ class TestAccountGet:
         assert response["code"] == "QIT002004"
 
     def test_key_out_of_format_is_invalid_parameter(self):
-        for key in ("1", "abc"):
+        for key in ("1", "abc", RandomGenerator.generate_uuid() + "%0A"):
             status, response = RequestGenerator.GET_account(key)
             assert status == 400, key
             assert response["code"] == "QIT000010"

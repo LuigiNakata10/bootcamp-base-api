@@ -66,7 +66,9 @@ class TestDepositCreate:
         status, _ = RequestGenerator.POST_deposit(payload)
         assert status == 201
 
-        for changed in ({"amount": 1001}, {"account_key": other_account_key}):
+        changes = [{"amount": amount} for amount in (1001, 0, -1, BIGINT_MAX + 1)]
+        changes.append({"account_key": other_account_key})
+        for changed in changes:
             status, response = RequestGenerator.POST_deposit({**payload, **changed})
             assert status == 409, changed
             assert response["code"] == "QIT002008"
@@ -131,7 +133,8 @@ class TestDepositCreate:
         assert response["code"] == "QIT002004"
 
     def test_refuses_bad_bodies(self):
-        valid = PayloadGenerator.create_deposit_payload(RandomGenerator.generate_uuid(), 100)
+        account_key = ObjectGenerator.create_account()
+        valid = PayloadGenerator.create_deposit_payload(account_key, 100)
         bodies = [
             {},
             {k: v for k, v in valid.items() if k != "operation_key"},
@@ -139,6 +142,8 @@ class TestDepositCreate:
             {k: v for k, v in valid.items() if k != "amount"},
             {**valid, "unknown": 1},
             {**valid, "operation_key": "not-a-uuid"},
+            {**valid, "operation_key": valid["operation_key"] + "\n"},
+            {**valid, "account_key": valid["account_key"] + "\n"},
             {**valid, "account_key": "123"},
             {**valid, "account_key": None},
         ]
@@ -146,6 +151,9 @@ class TestDepositCreate:
             status, response = RequestGenerator.POST_deposit(body)
             assert status == 400, body
             assert response["code"] == "QIT000001"
+
+        assert ObjectGenerator.balance(account_key) == 0
+        assert ObjectGenerator.all_entries(account_key) == []
 
     def test_same_key_in_parallel_credits_once(self):
         account_key = ObjectGenerator.create_account()
@@ -194,7 +202,7 @@ class TestOperationGet:
         assert response["code"] == "QIT002011"
 
     def test_key_out_of_format_is_invalid_parameter(self):
-        for key in ("1", "abc"):
+        for key in ("1", "abc", RandomGenerator.generate_uuid() + "%0A"):
             status, response = RequestGenerator.GET_operation(key)
             assert status == 400, key
             assert response["code"] == "QIT000010"

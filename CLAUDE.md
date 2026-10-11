@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Protótipo bancário do Bootcamp QI Tech 2026 (README e docs em português): API REST em FastAPI + PostgreSQL, rodando em Docker. O contrato (tabelas, rotas, status, códigos de erro, mecanismos) está na RFC mais recente em `docs/` (hoje `RFC-prototipo-bancario-v6.3.md`); **a RFC vence** se código e texto divergirem — corrija um dos dois e suba a versão da RFC. O PDF da banca (`docs/RFC-prototipo-bancario-v6_3.pdf`) é gerado a partir do `.md` fora do repositório: ao mudar a RFC, suba a versão no `.md` e gere o PDF de novo (os PDFs v1–v6.0 são só histórico).
+Protótipo bancário do Bootcamp QI Tech 2026 (README e docs em português): API REST em FastAPI + PostgreSQL, rodando em Docker. O contrato (tabelas, rotas, status, códigos de erro, mecanismos) está na RFC mais recente em `docs/` (hoje `RFC-prototipo-bancario-v6.4.md`); **a RFC vence** se código e texto divergirem - corrija um dos dois e suba a versão da RFC. O PDF da banca (`docs/RFC-prototipo-bancario-v6.4.pdf`) é gerado a partir do `.md` fora do repositório: ao mudar a RFC, suba a versão no `.md` e gere o PDF de novo (as versões anteriores são histórico).
 
 ## Comandos
 
@@ -43,7 +43,7 @@ Registrados de dentro para fora (o último registrado executa primeiro): na exec
 
 ### Como uma movimentação é protegida (o miolo da RFC)
 
-Em `OperationController._execute`, nesta ordem: recusas sem banco → procura a `operation_key` (repetida: 200 com a resposta original, ou 409 se os dados diferem) → confere contas (404) → **reserva a chave** com `INSERT` sob `UNIQUE(operation_key)` na mesma transação do dinheiro → **trava as contas** `ORDER BY account_key` e só então lê os saldos → confere saldo/limite → move o dinheiro e grava os lançamentos → `COMMIT`. Qualquer recusa depois da reserva faz `rollback` explícito (desfaz também a chave). Pontos não óbvios:
+Após validar o formato no resource, `OperationController._execute` segue esta ordem: procura a `operation_key` (repetida: 200 com a resposta original, ou 409 se os dados diferem) → confere valor positivo no limite e contas distintas (422) → confere contas (404) → **reserva a chave** com `INSERT` sob `UNIQUE(operation_key)` na mesma transação do dinheiro → **trava as contas** `ORDER BY account_key` e só então lê os saldos → confere saldo/limite → move o dinheiro e grava os lançamentos → `COMMIT`. Qualquer recusa depois da reserva faz `rollback` explícito (desfaz também a chave). Pontos não óbvios:
 
 - As contas são travadas com `FOR NO KEY UPDATE` (`with_for_update(key_share=True)`), **não** `FOR UPDATE`: o `INSERT` da operação tem FK para as contas e pega `FOR KEY SHARE`, que conflita com `FOR UPDATE` e causava deadlock entre transferências concorrentes mesmo com a ordem certa.
 - `BaseController.start_write_transaction()` faz `SET LOCAL lock_timeout = '5s'`; `lock_timeout_guard()` converte SQLSTATE `55P03` em `503 QIT002010`. Chave repetida em paralelo: o `IntegrityError` (`23505`) faz rollback e o laço relê a operação.

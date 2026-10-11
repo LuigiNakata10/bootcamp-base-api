@@ -25,8 +25,8 @@ class OperationController(BaseController):
     """Depósito e transferência: a mesma receita, com uma conta a mais na transferência.
 
     O roteiro de cada movimentação, em ordem (o commit é a última linha):
-      1. recusa o que dá para recusar sem consultar o banco;
-      2. procura a operation_key — repetida, devolve a resposta original (200) ou o conflito (409);
+      1. procura a operation_key - repetida, devolve a resposta original (200) ou o conflito (409);
+      2. confere valor positivo no limite e contas distintas;
       3. confere que as contas existem (sem travar);
       4. reserva a chave com INSERT sob UNIQUE, na mesma transação do dinheiro;
       5. trava as contas em ordem crescente de account_key e só então lê os saldos;
@@ -87,15 +87,6 @@ class OperationController(BaseController):
     def _execute(self, operation_type: str, operation_key: str, source_key, destination_key: str, amount: int) -> tuple:
         fee_amount = TRANSFER_FEE if operation_type == Operation.TRANSFER else 0
 
-        if amount <= 0:
-            raise InvalidAmount(amount)
-
-        if amount > BIGINT_MAX:
-            raise AmountLimitExceeded(amount)
-
-        if source_key is not None and source_key == destination_key:
-            raise SameAccountTransfer(source_key)
-
         account_keys = [key for key in (source_key, destination_key) if key is not None]
 
         with self.lock_timeout_guard():
@@ -105,6 +96,15 @@ class OperationController(BaseController):
                 existing = self.operation_repository.get_by_key(operation_key)
                 if existing is not None:
                     return self._repeated(existing, operation_type, source_key, destination_key, amount), False
+
+                if amount <= 0:
+                    raise InvalidAmount(amount)
+
+                if amount > BIGINT_MAX:
+                    raise AmountLimitExceeded(amount)
+
+                if source_key is not None and source_key == destination_key:
+                    raise SameAccountTransfer(source_key)
 
                 found = {account.account_key: account for account in self.account_repository.get_by_keys(account_keys)}
                 for account_key in account_keys:

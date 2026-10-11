@@ -26,7 +26,7 @@ def check_digit(characters: str, weights: list) -> int:
 
 def is_valid_cnpj(cnpj: str) -> bool:
     """Confere formato e os dois verificadores (módulo 11). Espera o CNPJ já normalizado."""
-    if not CNPJ_FORMAT.match(cnpj):
+    if not CNPJ_FORMAT.fullmatch(cnpj):
         return False
 
     first = check_digit(cnpj[:12], FIRST_WEIGHTS)

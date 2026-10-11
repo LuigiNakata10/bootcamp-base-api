@@ -92,6 +92,7 @@ class TestCompanyCreate:
             "11.222.333/0001-81",
             valid[:-1],
             valid + "0",
+            valid + "\n",
             valid[:12] + "AB",
             valid[:5] + "-" + valid[6:],
             "",
@@ -112,6 +113,18 @@ class TestCompanyCreate:
             status, response = RequestGenerator.POST_company(PayloadGenerator.create_company_payload(legal_name))
             assert status == 400, repr(legal_name)
             assert response["code"] == "QIT000001"
+
+    def test_refuses_nul_in_legal_name_without_creating_the_company(self):
+        payload = PayloadGenerator.create_company_payload("Empresa\x00Teste")
+
+        status, response = RequestGenerator.POST_company(payload)
+
+        assert status == 400
+        assert response["code"] == "QIT000001"
+
+        status, created = RequestGenerator.POST_company({**payload, "legal_name": "Empresa Teste"})
+        assert status == 201
+        assert ObjectGenerator.balance(created["account_key"]) == 0
 
     def test_refuses_bad_bodies(self):
         valid = PayloadGenerator.create_company_payload()
@@ -163,7 +176,7 @@ class TestCompanyGet:
         assert response["code"] == "QIT002003"
 
     def test_key_out_of_format_is_invalid_parameter(self):
-        for key in ("1", "abc", "not-a-uuid"):
+        for key in ("1", "abc", "not-a-uuid", RandomGenerator.generate_uuid() + "%0A"):
             status, response = RequestGenerator.GET_company(key)
             assert status == 400, key
             assert response["code"] == "QIT000010"

@@ -94,6 +94,10 @@ class TestTransferCreate:
 
         changes = [
             {"amount": 1001},
+            {"amount": 0},
+            {"amount": -1},
+            {"amount": BIGINT_MAX + 1},
+            {"destination_account_key": source},
             {"destination_account_key": other},
             {"source_account_key": other},
             {"source_account_key": destination, "destination_account_key": source},
@@ -213,15 +217,22 @@ class TestTransferCreate:
         assert ObjectGenerator.balance(destination) == BIGINT_MAX
 
     def test_refuses_bad_bodies(self):
-        a, b = RandomGenerator.generate_uuid(), RandomGenerator.generate_uuid()
+        a, b = ObjectGenerator.create_account(balance=1000), ObjectGenerator.create_account()
         valid = PayloadGenerator.create_transfer_payload(a, b, 100)
         bodies = [{}, {**valid, "unknown": 1}, {**valid, "operation_key": "x"}, {**valid, "source_account_key": "1"}]
         bodies += [{k: v for k, v in valid.items() if k != field} for field in valid]
+        bodies += [{**valid, field: valid[field] + "\n"} for field in (
+            "operation_key", "source_account_key", "destination_account_key"
+        )]
 
         for body in bodies:
             status, response = RequestGenerator.POST_transfer(body)
             assert status == 400, body
             assert response["code"] == "QIT000001"
+
+        assert ObjectGenerator.balance(a) == 1000
+        assert ObjectGenerator.balance(b) == 0
+        assert_invariants([a, b])
 
     def test_operation_can_be_fetched_after_the_transfer(self):
         source = ObjectGenerator.create_account(balance=5000)

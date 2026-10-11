@@ -68,7 +68,7 @@ class TestEntries:
 
     def test_invalid_page_is_invalid_parameter(self):
         account_key = ObjectGenerator.create_account()
-        for page in ("-1", "abc", "1.5", "", "1000000000"):
+        for page in ("-1", "abc", "1.5", "", "1000000000", "0\n"):
             status, response = RequestGenerator.GET_entries(account_key, {"page": page})
             assert status == 400, page
             assert response["code"] == "QIT000010"

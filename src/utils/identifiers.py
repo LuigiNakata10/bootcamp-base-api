@@ -11,7 +11,7 @@ def parse_key(value: str, name: str = "key") -> str:
     Fora do formato é 400 sem consultar o banco: uma chave que nem parece
     UUID não pode existir, e a resposta certa para isso não é "não achei".
     """
-    if not isinstance(value, str) or not UUID_FORMAT.match(value):
+    if not isinstance(value, str) or not UUID_FORMAT.fullmatch(value):
         raise InvalidParameter(f"{name} must be a canonical UUID")
 
     return value.lower()

@@ -54,7 +54,7 @@ def parse_page(raw_page) -> int:
     if raw_page is None:
         return 0
 
-    if not PAGE_FORMAT.match(raw_page):
+    if not PAGE_FORMAT.fullmatch(raw_page):
         raise InvalidParameter("page must be an integer greater than or equal to 0")
 
     return int(raw_page)

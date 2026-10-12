@@ -1,12 +1,14 @@
-# Protótipo bancário — Bootcamp QI Tech 2026
+# Protótipo bancário - Bootcamp QI Tech 2026
+
+**Integrantes:** Renan Correia e Luigi Nakata.
 
 API REST em **Python + FastAPI**, com **PostgreSQL**, rodando em **Docker**. Um operador (banco ou
 fintech) cadastra **empresas** (cada uma com uma conta), faz **depósitos** e **transferências com
 tarifa**, consulta o **extrato paginado** e confere a **arrecadação de tarifas** de um período.
 
 O desenho completo, com as decisões tomadas e as descartadas, está na RFC:
-[docs/RFC-prototipo-bancario-v6.4.md](docs/RFC-prototipo-bancario-v6.4.md) (revisão proposta; o PDF
-correspondente é [docs/RFC-prototipo-bancario-v6.4.pdf](docs/RFC-prototipo-bancario-v6.4.pdf), e as
+[docs/RFC-prototipo-bancario-v6.5.md](docs/RFC-prototipo-bancario-v6.5.md) (versão da entrega; o PDF
+correspondente é [docs/RFC-prototipo-bancario-v6.5.pdf](docs/RFC-prototipo-bancario-v6.5.pdf), e as
 versões anteriores ficam em `docs/` como histórico). Este README só diz como subir, testar e chamar.
 
 As três garantias do serviço:
@@ -22,17 +24,21 @@ As três garantias do serviço:
 
 | O quê | Para quê | Como conferir |
 |---|---|---|
+| **Git** | clona o repositório público | `git --version` |
 | **Docker** com `docker compose` | roda a API e o banco | `docker compose version` |
 | **Python 3.11 ou mais novo** | roda os testes | `python3 --version` |
 
 ## 2. Subindo
 
 ```bash
-docker compose up
+git clone https://github.com/LuigiNakata10/bootcamp-base-api.git
+cd bootcamp-base-api
+docker compose up -d --build --wait
 ```
 
 Um comando, sem criar arquivo nenhum antes: as configurações têm valor padrão no próprio
-`docker-compose.yml`. A API fica em http://localhost:3000. Espere o `(healthy)` antes de testar.
+`docker-compose.yml`. A API fica em http://localhost:3000. O `--wait` espera API e banco ficarem saudáveis.
+As portas 3000 e 5432 precisam estar disponíveis; veja a seção 5 para alterá-las.
 
 ```bash
 docker compose down        # desliga, mantendo os dados
@@ -46,21 +52,25 @@ importa nada de `src/`.
 
 ```bash
 python3 -m venv .venv
-source .venv/bin/activate              # no Windows: .venv\Scripts\activate
-pip install -r requirements-dev.txt    # uma vez só
+source .venv/bin/activate              # PowerShell: .venv\Scripts\Activate.ps1
+python -m pip install -r requirements-dev.txt
 
 pytest                                                    # tudo (~40 s)
 pytest -v tests/integration/banking/test_transfer.py      # um arquivo
 pytest tests/integration/banking/test_transfer.py::TestTransferCreate::test_same_account_is_unprocessable   # um teste
 ```
 
+No Windows, use `python` no lugar de `python3`. A entrega foi validada com Python 3.11,
+PostgreSQL 16 e SQLAlchemy 2.0.51. Os testes procuram a API em `127.0.0.1`, por padrão.
+Alguns testes recriam o schema do banco: execute a suíte somente no banco de testes deste projeto.
+
 O que a suíte cobre: cada recusa da RFC tem um teste; cada cenário de dinheiro termina conferindo as
 **invariantes** (nenhum saldo negativo, saldo igual ao extrato, soma dos saldos igual a depósitos
 menos tarifas, 1 lançamento por depósito e 3 por transferência); e há testes de **concorrência**
 (saldo disputado, A→B e B→A ao mesmo tempo, mesma chave em paralelo).
 
-Dois testes (`test_resilience.py`) abrem uma conexão direta ao Postgres para provocar uma trava
-presa e uma falha no meio da gravação; o cenário em si continua nascendo pela API.
+Os testes de resiliência (`test_resilience.py`) usam uma conexão direta ao Postgres para provocar
+travas e falhas de gravação, e verificar o histórico imutável; os cenários nascem pela API.
 
 ## 4. As rotas
 
@@ -93,7 +103,7 @@ Erros têm sempre `title`, `description`, `translation` e `code`. Os do protóti
 | `QIT002008` | 409 | `operation_key` já usada com outros dados |
 | `QIT002009` | 422 | valor acima do limite (BIGINT) |
 | `QIT002010` | 503 | espera de trava acima de 5 s (com `Retry-After: 1`); reenvie a mesma chave |
-| `QIT002011` | 404 | operação não encontrada (nunca chegou ao `COMMIT`) |
+| `QIT002011` | 404 | operação ainda não confirmada ou inexistente na consulta |
 | `QIT000001` | 400 | corpo fora do formato (campo faltando, a mais, `amount` fracionário...) |
 | `QIT000010` | 400 | parâmetro de caminho ou de query fora do formato |
 | `QIT000002` | 403 | sem `INTERNAL-TOKEN` |
@@ -125,7 +135,8 @@ curl -s $H "localhost:3000/fees?start_date=2026-10-01&end_date=2026-10-31"
 ```
 
 Timeout ou `5xx` não provam que nada aconteceu. Consulte `GET /operations/{operation_key}`
-(`404 QIT002011` quer dizer que não houve `COMMIT`) ou reenvie os mesmos dados.
+(`404 QIT002011` significa que ainda não há operação confirmada visível, inclusive se uma tentativa
+estiver em andamento) ou reenvie os mesmos dados com a mesma chave.
 
 Toda resposta traz o cabeçalho `X-Request-ID`; para achar a requisição no log:
 `docker compose logs api | grep <id>`. Cada movimentação também escreve uma linha

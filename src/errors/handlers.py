@@ -12,6 +12,7 @@ from errors.base_error import (
     NotFoundResource,
 )
 from utils.logger import get_logger
+from utils.request_context import REQUEST_ID_HEADER, get_request_id
 
 
 logger = get_logger(__name__)
@@ -98,4 +99,6 @@ def register_error_handlers(application: FastAPI) -> None:
     @application.exception_handler(Exception)
     def handle_unexpected_error(request: Request, exception: Exception) -> JSONResponse:
         logger.exception(f"Erro inesperado em {request.method} {request.url.path}")
-        return qi_exception_to_response(InternalError())
+        response = qi_exception_to_response(InternalError())
+        response.headers[REQUEST_ID_HEADER] = get_request_id()
+        return response

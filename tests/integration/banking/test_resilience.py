@@ -80,15 +80,19 @@ class TestResilience:
                 )
 
                 try:
-                    status, response = RequestGenerator.POST_deposit(payload)
+                    result = ClientRequisition.send(
+                        "POST", "/deposits", payload=payload,
+                        headers={"INTERNAL-TOKEN": INTERNAL_TOKEN, "X-Request-ID": "delivery-failure"},
+                    )
                 finally:
                     connection.execute(text("DROP TRIGGER IF EXISTS fail_entry_insert ON entry"))
                     connection.execute(text("DROP FUNCTION IF EXISTS fail_entry_insert()"))
         finally:
             engine.dispose()
 
-        assert status == 500
-        assert response["code"] == "QIT000500"
+        assert result.response_status == 500
+        assert result.response_json["code"] == "QIT000500"
+        assert result.response.headers.get("X-Request-ID") == "delivery-failure"
 
         # Nada pela metade: nem saldo, nem lançamento, nem a operação (a chave também foi desfeita).
         assert ObjectGenerator.balance(account_key) == 0

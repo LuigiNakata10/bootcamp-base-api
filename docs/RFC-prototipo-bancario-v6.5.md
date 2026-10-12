@@ -1,9 +1,9 @@
-# RFC - Protótipo bancário empresarial: movimentação idempotente, contas travadas em ordem e tarifa conferível
+# RFC — Protótipo bancário empresarial: movimentação idempotente, contas travadas em ordem e tarifa conferível
 
 | | |
 |---|---|
 | **Time** | Renan Correia · Luigi Nakata |
-| **Data** | 12/10/2026 |
+| **Data** | 11/10/2026 |
 | **Versão** | 6.5 |
 
 ## Contextualização
@@ -52,7 +52,7 @@ Recursos em inglês e no plural. Todas as rotas, menos `/` e `/health_check`, ex
 ### Banco de Dados (Somente diagrama)
 
 ```mermaid
-%%{init: {"theme":"base","themeVariables":{"primaryColor":"#e3f1fd","primaryBorderColor":"#5683ab","attributeBackgroundColorOdd":"#e3f1fd","attributeBackgroundColorEven":"#f1f7fc"}}}%%
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#e3f1fd","primaryBorderColor":"#5683ab","attributeBackgroundColorOdd":"#ffffff","attributeBackgroundColorEven":"#fbfdff"}}}%%
 erDiagram
     COMPANY ||--|| ACCOUNT : possui
     ACCOUNT o|--o{ OPERATION : "origem/destino"
@@ -100,6 +100,7 @@ erDiagram
 **Transferência - falha: duas transferências disputam o mesmo saldo**
 
 ```mermaid
+%%{init: {"theme":"neutral","themeVariables":{"fontFamily":"Arial"}}}%%
 sequenceDiagram
     participant O1 as Operador (T1)
     participant A as API
